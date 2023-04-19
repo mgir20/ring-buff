@@ -1,16 +1,36 @@
-// A circular buffer is a linear data structure following the principle of FIFO (First In First Out).
-// Instead of ending the queue at the last position, it starts from the last position after the last,
-// making the queue behave like a circular data structure.
-// Also called Ring buffer or circular queue
-// All operations on the ring buffer are O(1)
+//! Circular Buffer implementation
+//!
+//! A circular buffer is a linear data structure following the principle of FIFO (First In First Out).
+//! Instead of ending the queue at the last position, it starts from the last position after the last,
+//! making the queue behave like a circular data structure.
+//!
+//!
+//! To be used when losing data is acceptable,
+//! All operations on the ring buffer are O(1)
+//! Also called Ring buffer or circular queue
+//! The implementation stores data on the stack, for blablalbal
+//! It should not be used to store too large data sets, since it could cause an overflow
+
+/// Ring buffer implementation
 pub struct RingBuff<T, const CAP: usize> {
+    /// The data is stored in an array
     data: [Option<T>; CAP],
+    /// The queue head
     reader: usize,
+    /// The queue tail
     writer: usize,
+    /// Number of elements in the queue
     size: usize,
 }
 
 impl<T, const CAP: usize> RingBuff<T, CAP> {
+    /// Returns a Ring Buffer
+    ///
+    /// # Arguments
+    ///
+    /// # Examples
+    /// `let buffer: RingBuff<i32, 4> = RingBuff::new();`
+    ///
     pub fn new() -> Self
         where
             T: Copy, {
@@ -22,6 +42,10 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
         }
     }
 
+    /// Pushes an element at the back of the queue
+    ///
+    /// #Arguments
+    /// * `element` - The element to add to the queue
     pub fn push_back(&mut self, element: T) {
         // When reaching the end of the allocated data sequence,
         // the data is written on the first cell
@@ -33,6 +57,10 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
         self.writer = self.next_index(self.writer);
     }
 
+    /// Removes the element from the back of the queue
+    ///
+    /// #Arguments
+    ///
     pub fn pop(&mut self) -> Option<T> {
         let reader = self.reader;
         self.reader = self.next_index(self.reader);
@@ -41,6 +69,12 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
         std::mem::take(&mut self.data[reader])
     }
 
+    /// Returns the index of the next element in data advancing in the queue
+    ///
+    /// #Arguments
+    ///
+    /// * `index` - The original index
+    ///
     pub(crate) fn next_index(&self, index: usize) -> usize {
         if index == CAP - 1 {
             0
@@ -49,27 +83,50 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
         }
     }
 
+    /// Returns the maximum capacity
+    ///
+    /// #Arguments
+    ///
     pub const fn capacity(&self) -> usize {
         CAP
     }
 
-    const fn size(&self) -> usize {
-        self.size
-    }
-
+    /// Returns whether or not the buffer is empty
+    ///
+    /// #Arguments
+    ///
     const fn is_empty(&self) -> bool {
         self.size == 0
     }
 
+    /// Returns whether or not the buffer is full
+    ///
+    /// #Arguments
+    ///
     const fn is_full(&self) -> bool {
         self.size == CAP
     }
 
-    // Return the next value to be read without consuming it
+    /// Returns the number of elements in the buffer
+    ///
+    /// #Arguments
+    ///
+    const fn len(&self) -> usize {
+        self.size
+    }
+
+    /// Return the next value to be read without consuming it
+    ///
+    /// #Arguments
+    ///
     pub fn peek(&self) -> Option<&T> {
         self.data[self.reader].as_ref()
     }
 
+    /// Returns an iterator on the buffer
+    ///
+    /// #Arguments
+    ///
     pub fn iter(&self) -> RingBuffIter<T, CAP> {
         RingBuffIter {
             buffer: &self,
@@ -89,7 +146,7 @@ impl<'a, T, const CAP: usize> Iterator for RingBuffIter<'a, T, CAP> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.count == self.buffer.size {
+        if self.count == self.buffer.len() {
             None
         } else {
             let current = &self.buffer.data[self.index];
