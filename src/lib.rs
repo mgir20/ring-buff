@@ -11,9 +11,11 @@
 //! The implementation stores data on the stack, for blablalbal
 //! It should not be used to store too large data sets, since it could cause an overflow
 
-use std::fmt::{Debug};
-use std::mem;
+#[no_std]
+use core::fmt::{Debug};
+use core::mem;
 
+#[cfg(test)]
 mod test;
 
 /// Ring buffer implementation
@@ -144,7 +146,7 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
             }
         }
 
-        for i in 0..self.len() {
+        'top: for i in 0..self.len() {
             if self.get_mut(i).is_none() {
                 for j in i..self.len() {
                     if self.get_mut(j).is_some() {
@@ -153,6 +155,7 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
                         self.data.swap(idx, jdx);
                         break;
                     }
+                    if j == self.len() - 1 { break 'top; }
                 }
             }
         }
@@ -246,18 +249,6 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
             count: 0,
         }
     }
-
-    /*    /// Returns a mutable iterator on the buffer
-        ///
-        /// # Arguments
-        ///
-        pub fn iter_mut(&mut self) -> RingBuffIterMut<T, CAP> {
-            RingBuffIterMut {
-                buffer: &mut self,
-                index: self.reader,
-                count: 0,
-            }
-        }*/
 }
 
 pub struct RingBuffIter<'a, T, const CAP: usize> {
@@ -283,27 +274,3 @@ impl<'a, T, const CAP: usize> Iterator for RingBuffIter<'a, T, CAP> {
         }
     }
 }
-
-/*pub struct RingBuffIterMut<'a, T, const CAP: usize> {
-    /// A reference to the RingBuff
-    buffer: &'a mut RingBuff<T, CAP>,
-    /// The index of the iterator in the buffer data array
-    index: usize,
-    /// Count of elements iterated through
-    count: usize,
-}
-
-impl<'a, T, const CAP: usize> Iterator for RingBuffIterMut<'a, T, CAP> {
-    type Item = &'a mut T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.count == self.buffer.len() {
-            None
-        } else {
-            let current = &mut self.buffer.data[self.index];
-            self.index = self.buffer.next_index(self.index);
-            self.count += 1;
-            current.as_mut()
-        }
-    }
-}*/
