@@ -74,7 +74,6 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
     pub fn pop(&mut self) -> Option<T> {
         let reader = self.reader;
         self.reader = self.next_index(self.reader);
-
         self.size -= 1;
         mem::take(&mut self.data[reader])
     }
@@ -93,6 +92,12 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
         }
     }
 
+    /// Returns the index of the previous element in data.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The original index
+    ///
     fn previous_index(&self, index: usize) -> usize {
         if index == 0 {
             CAP - 1
@@ -101,6 +106,13 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
         }
     }
 
+    /// Converts an index from the reader to its corresponding
+    /// index in the data array
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The original index
+    ///
     fn relative_to_absolute_index(&self, index: usize) -> Option<usize> {
         if index >= self.len() {
             None
@@ -136,26 +148,20 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
             F: FnMut(&mut T) -> bool,
     {
         let mut size = self.len();
-
+        let mut j = self.len();
 
         for i in 0..self.len() {
             if !f(self.get_mut(i).unwrap()) {
                 self.data[self.relative_to_absolute_index(i).unwrap()] = None;
                 self.writer = self.previous_index(self.writer);
                 size -= 1;
-            }
-        }
-
-        'top: for i in 0..self.len() {
-            if self.get_mut(i).is_none() {
-                for j in i..self.len() {
-                    if self.get_mut(j).is_some() {
-                        let idx = self.relative_to_absolute_index(i).unwrap();
-                        let jdx = self.relative_to_absolute_index(j).unwrap();
-                        self.data.swap(idx, jdx);
-                        break;
-                    }
-                    if j == self.len() - 1 { break 'top; }
+                if j == self.len() { j = i; };
+            } else if j != self.len() && self.get(i).is_some() {
+                if f(self.get_mut(i).unwrap()) {
+                    let idx = self.relative_to_absolute_index(i).unwrap();
+                    let jdx = self.relative_to_absolute_index(j).unwrap();
+                    self.data.swap(idx, jdx);
+                    j += 1;
                 }
             }
         }
