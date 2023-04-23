@@ -1,4 +1,4 @@
-//! Circular Buffer implementation
+//! Simple circular Buffer implementation
 //!
 //! A circular buffer is a linear data structure following the principle of FIFO (First In First Out).
 //! Instead of ending the queue at the last position, it starts from the last position after the last,
@@ -6,12 +6,18 @@
 //!
 //!
 //! To be used when losing data is acceptable,
-//! All operations on the ring buffer are O(1)
+//! All basic operations on the ring buffer are O(1)
 //! Also called Ring buffer or circular queue
 //! The implementation stores data on the stack, for blablalbal
 //! It should not be used to store too large data sets, since it could cause an overflow
 
+use std::fmt::{Debug};
+use std::mem;
+
+mod test;
+
 /// Ring buffer implementation
+#[derive(Debug)]
 pub struct RingBuff<T, const CAP: usize> {
     /// The data is stored in an array
     data: [Option<T>; CAP],
@@ -24,7 +30,7 @@ pub struct RingBuff<T, const CAP: usize> {
 }
 
 impl<T, const CAP: usize> RingBuff<T, CAP> {
-    /// Returns a Ring Buffer
+    /// Return a new Ring Buffer
     ///
     /// # Arguments
     ///
@@ -42,36 +48,38 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
         }
     }
 
-    /// Pushes an element at the back of the queue
+    /// Pushes one element to the back of the queue.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `element` - The element to add to the queue
     pub fn push_back(&mut self, element: T) {
         // When reaching the end of the allocated data sequence,
         // the data is written on the first cell
-        self.data[self.writer] = Some(element);
-        if !self.is_full() {
-            self.size += 1;
-        }
 
+        if self.is_full() { self.reader = self.next_index(self.reader); }
+
+        self.data[self.writer] = Some(element);
+
+        self.size += !self.is_full() as usize;
         self.writer = self.next_index(self.writer);
     }
 
-    /// Removes the element from the back of the queue
+    /// Remove one element from the back of the queue
+    /// and returns it.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     pub fn pop(&mut self) -> Option<T> {
         let reader = self.reader;
         self.reader = self.next_index(self.reader);
 
         self.size -= 1;
-        std::mem::take(&mut self.data[reader])
+        mem::take(&mut self.data[reader])
     }
 
-    /// Returns the index of the next element in data advancing in the queue
+    /// Returns the index of the next element in data.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `index` - The original index
     ///
@@ -83,49 +91,153 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
         }
     }
 
-    /// Returns the maximum capacity
-    ///
-    /// #Arguments
-    ///
-    pub const fn capacity(&self) -> usize {
-        CAP
+    fn previous_index(&self, index: usize) -> usize {
+        if index == 0 {
+            CAP - 1
+        } else {
+            index - 1
+        }
     }
 
-    /// Returns whether or not the buffer is empty
+    fn relative_to_absolute_index(&self, index: usize) -> Option<usize> {
+        if index >= self.len() {
+            None
+        } else if self.reader + index >= self.capacity() {
+            Some((self.reader + index) % self.capacity())
+        } else {
+            Some(self.reader + index)
+        }
+    }
+
+    /// Retains only elements fitting a predicate.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
-    const fn is_empty(&self) -> bool {
+    ///  * `f` - A predicate
+    ///
+    pub fn retain<F>(&mut self, mut f: F)
+        where
+            F: FnMut(&T) -> bool,
+    {
+        self.retain_mut(|elem| f(elem));
+    }
+
+    /// Retains only elements fitting a predicate,
+    /// passing a mutable reference to it.
+    ///
+    /// # Arguments
+    ///
+    ///  * `f` - A predicate
+    ///
+    pub fn retain_mut<F>(&mut self, mut f: F)
+        where
+            F: FnMut(&mut T) -> bool,
+    {
+        let mut size = self.len();
+
+
+        for i in 0..self.len() {
+            if !f(self.get_mut(i).unwrap()) {
+                self.data[self.relative_to_absolute_index(i).unwrap()] = None;
+                self.writer = self.previous_index(self.writer);
+                size -= 1;
+            }
+        }
+
+        for i in 0..self.len() {
+            if self.get_mut(i).is_none() {
+                for j in i..self.len() {
+                    if self.get_mut(j).is_some() {
+                        let idx = self.relative_to_absolute_index(i).unwrap();
+                        let jdx = self.relative_to_absolute_index(j).unwrap();
+                        self.data.swap(idx, jdx);
+                        break;
+                    }
+                }
+            }
+        }
+
+        self.size = size;
+    }
+
+    /// Removes all elements in the buffer.
+    /// Note that this method has no effect on
+    /// the allocated capacity of the buffer.
+    ///
+    /// # Arguments
+    ///
+    pub fn clear(&mut self) {
+        for _ in 0..self.size {
+            self.pop();
+        }
+    }
+
+    /// Returns true if the buffer contains no elements.
+    ///
+    /// # Arguments
+    ///
+    pub const fn is_empty(&self) -> bool {
         self.size == 0
     }
 
-    /// Returns whether or not the buffer is full
+    /// Returns whether or not the buffer is full.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     const fn is_full(&self) -> bool {
         self.size == CAP
     }
 
-    /// Returns the number of elements in the buffer
+    /// Returns the number of elements in the buffer.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     const fn len(&self) -> usize {
         self.size
     }
 
-    /// Return the next value to be read without consuming it
+    /// Returns the maximum number of elements the
+    /// buffer can hold.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
-    pub fn peek(&self) -> Option<&T> {
-        self.data[self.reader].as_ref()
+    pub const fn capacity(&self) -> usize {
+        CAP
+    }
+
+    /// Returns a reference to an element or None
+    /// if the index is out of bounds.
+    ///
+    /// # Arguments
+    /// * `index` - Position of the element to look up
+    ///
+    pub fn get(&self, index: usize) -> Option<&T> {
+        if index >= self.len() {
+            None
+        } else {
+            let i = self.relative_to_absolute_index(index).expect("Index is valid.");
+            self.data[i].as_ref()
+        }
+    }
+
+    /// Returns a mutable reference to an element or None
+    /// if the index is out of bounds
+    ///
+    /// # Arguments
+    /// * `index` - Position of the element to look up
+    ///
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+        if index >= self.len() {
+            None
+        } else {
+            let i = self.relative_to_absolute_index(index).expect("Index is valid.");
+            self.data[i].as_mut()
+        }
     }
 
     /// Returns an iterator on the buffer
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     pub fn iter(&self) -> RingBuffIter<T, CAP> {
         RingBuffIter {
@@ -134,11 +246,26 @@ impl<T, const CAP: usize> RingBuff<T, CAP> {
             count: 0,
         }
     }
+
+    /*    /// Returns a mutable iterator on the buffer
+        ///
+        /// # Arguments
+        ///
+        pub fn iter_mut(&mut self) -> RingBuffIterMut<T, CAP> {
+            RingBuffIterMut {
+                buffer: &mut self,
+                index: self.reader,
+                count: 0,
+            }
+        }*/
 }
 
 pub struct RingBuffIter<'a, T, const CAP: usize> {
+    /// A reference to the RingBuff
     buffer: &'a RingBuff<T, CAP>,
+    /// The index of the iterator in the buffer data array
     index: usize,
+    /// Count of elements iterated through
     count: usize,
 }
 
@@ -157,165 +284,26 @@ impl<'a, T, const CAP: usize> Iterator for RingBuffIter<'a, T, CAP> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn can_construct_ring_buffer() {
-        let _buffer: RingBuff<i32, 10> = RingBuff::new();
-    }
-
-
-    #[test]
-    fn push_pop_one_element() {
-        let mut buffer: RingBuff<i32, 10> = RingBuff::new();
-        buffer.push_back(100);
-        let element = buffer.pop();
-
-        assert_eq!(element.unwrap(), 100);
-    }
-
-    #[test]
-    fn push_multiple_pop_one_element() {
-        let mut buffer: RingBuff<i32, 10> = RingBuff::new();
-        buffer.push_back(100);
-        buffer.push_back(101);
-        buffer.push_back(102);
-        let element = buffer.pop();
-
-        assert_eq!(element.unwrap(), 100);
-    }
-
-    #[test]
-    fn check_capacity() {
-        let buffer: RingBuff<i32, 10> = RingBuff::new();
-        let capacity = buffer.capacity();
-
-        assert_eq!(capacity, 10);
-    }
-
-    #[test]
-    fn peek_returns_current_tail() {
-        let mut buffer: RingBuff<i32, 10> = RingBuff::new();
-        buffer.push_back(100);
-        buffer.push_back(101);
-        buffer.push_back(102);
-
-        let element = buffer.peek();
-
-        assert_eq!(*element.unwrap(), 100);
-    }
-
-    #[test]
-    fn peek_does_not_move_reader() {
-        let mut buffer: RingBuff<i32, 10> = RingBuff::new();
-        buffer.push_back(100);
-        buffer.push_back(101);
-        buffer.push_back(102);
-
-        buffer.peek();
-        let element = buffer.pop();
-
-        assert_eq!(element.unwrap(), 100);
-    }
-
-    #[test]
-    fn fill_and_overwrite_oldest_element() {
-        let mut buffer: RingBuff<i32, 4> = RingBuff::new();
-        // Fill
-        buffer.push_back(100);
-        buffer.push_back(101);
-        buffer.push_back(102);
-        buffer.push_back(103);
-
-        // Overwrite oldest
-        buffer.push_back(104);
-
-        let element = buffer.pop();
-
-        assert_eq!(element.unwrap(), 104);
-    }
-
-    #[test]
-    fn pop_all_elements_in_order() {
-        let mut buffer: RingBuff<i32, 4> = RingBuff::new();
-        // Fill
-        buffer.push_back(100);
-        buffer.push_back(101);
-        buffer.push_back(102);
-        buffer.push_back(103);
-
-        let (el1, el2, el3, el4) = (buffer.pop(), buffer.pop(), buffer.pop(), buffer.pop());
-
-        println!("{},{},{},{}", el1.unwrap(), el2.unwrap(), el3.unwrap(), el4.unwrap());
-
-
-        assert_eq!((el1.unwrap(), el2.unwrap(), el3.unwrap(), el4.unwrap()), (100, 101, 102, 103));
-    }
-
-    #[test]
-    fn iterate_through() {
-        let mut buffer: RingBuff<i32, 4> = RingBuff::new();
-
-        // Fill
-        buffer.push_back(100);
-        buffer.push_back(101);
-        buffer.push_back(102);
-        buffer.push_back(103);
-
-        let mut result = [0, 0, 0, 0];
-
-        for (i, val) in buffer.iter().enumerate() {
-            result[i] = *val;
-        }
-
-        assert_eq!([100, 101, 102, 103], result);
-    }
-
-    #[test]
-    fn overflow_then_iterate_through() {
-        let mut buffer: RingBuff<i32, 4> = RingBuff::new();
-
-        // Fill
-        buffer.push_back(100);
-        buffer.push_back(101);
-        buffer.push_back(102);
-        buffer.push_back(103);
-        buffer.push_back(104);
-
-
-        let mut result = [0, 0, 0, 0];
-
-        for (i, val) in buffer.iter().enumerate() {
-            result[i] = *val;
-        }
-
-        assert_eq!([104, 101, 102, 103], result);
-    }
-
-    #[test]
-    fn push_pop_iterate_through() {
-        let mut buffer: RingBuff<i32, 4> = RingBuff::new();
-
-        // Fill
-        buffer.push_back(100);
-
-        buffer.push_back(101);
-        buffer.push_back(102);
-        buffer.push_back(103);
-        buffer.push_back(104);
-
-        buffer.pop();
-        buffer.pop();
-
-
-        let mut result = [0, 0];
-
-        for (i, val) in buffer.iter().enumerate() {
-            result[i] = *val;
-        }
-
-        assert_eq!([102, 103], result);
-    }
+/*pub struct RingBuffIterMut<'a, T, const CAP: usize> {
+    /// A reference to the RingBuff
+    buffer: &'a mut RingBuff<T, CAP>,
+    /// The index of the iterator in the buffer data array
+    index: usize,
+    /// Count of elements iterated through
+    count: usize,
 }
+
+impl<'a, T, const CAP: usize> Iterator for RingBuffIterMut<'a, T, CAP> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.count == self.buffer.len() {
+            None
+        } else {
+            let current = &mut self.buffer.data[self.index];
+            self.index = self.buffer.next_index(self.index);
+            self.count += 1;
+            current.as_mut()
+        }
+    }
+}*/
